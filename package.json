@@ -1,0 +1,6 @@
+{
+  "name": "bmc-ferrocast-filter-detection",
+  "version": "1.0.0",
+  "description": "BMC Ferrocast Filter Detection System powered by Roboflow",
+  "engines": { "node": "18.x" }
+}
