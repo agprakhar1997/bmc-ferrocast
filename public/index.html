@@ -237,11 +237,30 @@
     if (f && f.type.startsWith('image/')) loadFile(f);
   });
 
-  function loadFile(file) {
+function loadFile(file) {
     const reader = new FileReader();
-    reader.onload = ev => {
-      currentBase64 = ev.target.result.split(',')[1];
-      showPreview(ev.target.result);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        // 1. Create a hidden canvas for resizing
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // Optimal for Roboflow and stays under Vercel limits
+        const scale = MAX_WIDTH / img.width;
+        
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scale;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // 2. Convert to compressed JPEG (0.7 quality)
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        
+        // 3. Update global variable and UI preview
+        currentBase64 = compressedDataUrl.split(',')[1];
+        showPreview(compressedDataUrl);
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   }
