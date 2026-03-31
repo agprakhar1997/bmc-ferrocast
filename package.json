@@ -3,4 +3,5 @@
   "version": "1.0.0",
   "description": "BMC Ferrocast Filter Detection System powered by Roboflow",
   "engines": { "node": "24.x" }
+  "type": "module"
 }
