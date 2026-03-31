@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BMC Ferrocast · Filter Detection</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #07090d;
+    --surface: #0e1118;
+    --surface2: #131720;
+    --border: #1e2330;
+    --accent: #f5a623;
+    --accent2: #e05c1a;
+    --text: #e8eaf2;
+    --muted: #4a5068;
+    --green: #3affa0;
+    --red: #ff4e6a;
+    --radius: 14px;
+  }
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px 56px;
+  }
+
+  header { text-align: center; margin-bottom: 32px; }
+  .company-tag {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #0e1118; border: 1px solid var(--border);
+    border-radius: 100px; padding: 5px 16px;
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    color: var(--accent); letter-spacing: 0.08em; margin-bottom: 14px;
+  }
+  .company-tag .dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+  h1 { font-size: clamp(22px, 4vw, 38px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+  h1 .highlight { color: var(--accent); }
+  .subtitle { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+  .card {
+    width: 100%; max-width: 700px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .drop-zone {
+    position: relative; width: 100%; aspect-ratio: 16/9;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; background: #090b10; border-bottom: 1px solid var(--border);
+    overflow: hidden; transition: background 0.2s;
+  }
+  .drop-zone:hover { background: #0c0e16; }
+  .drop-zone.drag-over { background: #111508; border-color: var(--accent); }
+  .drop-hint { display: flex; flex-direction: column; align-items: center; gap: 10px; pointer-events: none; }
+  .drop-icon-wrap {
+    width: 60px; height: 60px; border-radius: 14px;
+    background: var(--surface2); border: 1.5px dashed var(--muted);
+    display: flex; align-items: center; justify-content: center; font-size: 26px;
+    transition: border-color 0.2s;
+  }
+  .drop-zone:hover .drop-icon-wrap { border-color: var(--accent); }
+  .drop-text { font-size: 14px; color: var(--muted); }
+  .drop-text strong { color: var(--accent); }
+  .drop-sub { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  #preview-img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; display: none;
+  }
+  canvas#overlay {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; display: none;
+  }
+
+  .card-footer { padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
+  .url-input {
+    flex: 1; background: #090b10; border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 14px;
+    font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text);
+    outline: none; transition: border-color 0.2s;
+  }
+  .url-input::placeholder { color: var(--muted); }
+  .url-input:focus { border-color: var(--accent); }
+
+  .detect-btn {
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    color: #07090d; font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 13px; letter-spacing: 0.04em;
+    border: none; border-radius: 8px; padding: 10px 24px;
+    cursor: pointer; white-space: nowrap;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  .detect-btn:hover { opacity: 0.88; }
+  .detect-btn:active { transform: scale(0.97); }
+  .detect-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .detect-btn.loading { color: transparent; position: relative; }
+  .detect-btn.loading::after {
+    content: ''; position: absolute; inset: 0; margin: auto;
+    width: 16px; height: 16px; border: 2.5px solid #07090d;
+    border-top-color: transparent; border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  #results { width: 100%; max-width: 700px; margin-top: 20px; display: none; }
+  .results-header {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+  }
+  .results-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .count-badge {
+    font-family: 'DM Mono', monospace; font-size: 11px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 100px; padding: 3px 12px; color: var(--accent);
+  }
+
+  .detections-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .det-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 20px;
+    display: flex; align-items: center; gap: 16px;
+    animation: fadeUp 0.3s ease both;
+  }
+  .det-card.available    { border-left: 3px solid var(--green); }
+  .det-card.not-available{ border-left: 3px solid var(--red); }
+  .det-card.unknown      { border-left: 3px solid var(--accent); }
+
+  .det-icon { font-size: 28px; flex-shrink: 0; }
+  .det-body { flex: 1; }
+  .det-class { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; text-transform: capitalize; margin-bottom: 4px; }
+  .det-class.available    { color: var(--green); }
+  .det-class.not-available{ color: var(--red); }
+  .det-class.unknown      { color: var(--accent); }
+
+  .det-meta { display: flex; gap: 14px; align-items: center; }
+  .det-conf { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+  .conf-bar { flex: 1; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; max-width: 120px; }
+  .conf-fill { height: 100%; border-radius: 2px; transition: width 0.7s ease; }
+  .conf-fill.available    { background: var(--green); }
+  .conf-fill.not-available{ background: var(--red); }
+  .conf-fill.unknown      { background: var(--accent); }
+  .det-dims { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+  .status-pill {
+    flex-shrink: 0; font-family: 'DM Mono', monospace; font-size: 10px;
+    font-weight: 500; letter-spacing: 0.05em; padding: 4px 12px;
+    border-radius: 100px; border: 1px solid;
+  }
+  .status-pill.available    { color: var(--green); border-color: var(--green); background: rgba(58,255,160,0.06); }
+  .status-pill.not-available{ color: var(--red);   border-color: var(--red);   background: rgba(255,78,106,0.06); }
+  .status-pill.unknown      { color: var(--accent); border-color: var(--accent); background: rgba(245,166,35,0.06); }
+
+  .empty-state {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 28px; text-align: center;
+    font-size: 13px; color: var(--muted);
+  }
+  .error-box {
+    background: #1a0a0d; border: 1px solid var(--red);
+    border-radius: 12px; padding: 16px 20px;
+    font-family: 'DM Mono', monospace; font-size: 12px; color: var(--red); line-height: 1.6;
+  }
+
+  #file-input { display: none; }
+
+  @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes spin   { to { transform: rotate(360deg); } }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="company-tag"><span class="dot"></span> BMC Ferrocast · Industrial Vision</div>
+  <h1>Filter <span class="highlight">Detection</span> System</h1>
+  <p class="subtitle">Upload a photo to detect filter availability on the production line</p>
+</header>
+
+<div class="card">
+  <div class="drop-zone" id="drop-zone">
+    <div class="drop-hint" id="drop-hint">
+      <div class="drop-icon-wrap">🔍</div>
+      <div class="drop-text"><strong>Click to upload</strong> or drag & drop</div>
+      <div class="drop-sub">PNG · JPG · WEBP — max 10 MB</div>
+    </div>
+    <img id="preview-img" alt="preview"/>
+    <canvas id="overlay"></canvas>
+  </div>
+  <div class="card-footer">
+    <input type="text" class="url-input" id="url-input" placeholder="…or paste a public image URL"/>
+    <button class="detect-btn" id="detect-btn" onclick="runDetection()">▶ Detect</button>
+  </div>
+</div>
+
+<div id="results">
+  <div class="results-header">
+    <span class="results-title">Detection Results</span>
+    <span class="count-badge" id="count-badge">—</span>
+  </div>
+  <div class="detections-list" id="detections-list"></div>
+</div>
+
+<input type="file" id="file-input" accept="image/*"/>
+
+<script>
+  const dropZone   = document.getElementById('drop-zone');
+  const fileInput  = document.getElementById('file-input');
+  const previewImg = document.getElementById('preview-img');
+  const overlay    = document.getElementById('overlay');
+  const urlInput   = document.getElementById('url-input');
+  const detectBtn  = document.getElementById('detect-btn');
+  const resultsDiv = document.getElementById('results');
+  const detList    = document.getElementById('detections-list');
+  const countBadge = document.getElementById('count-badge');
+  const dropHint   = document.getElementById('drop-hint');
+
+  let currentBase64 = null;
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { if(e.target.files[0]) loadFile(e.target.files[0]); });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadFile(f);
+  });
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      currentBase64 = ev.target.result.split(',')[1];
+      showPreview(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function showPreview(src) {
+    previewImg.src = src;
+    previewImg.style.display = 'block';
+    overlay.style.display = 'none';
+    dropHint.style.display = 'none';
+    clearResults();
+  }
+
+  function clearResults() {
+    detList.innerHTML = '';
+    resultsDiv.style.display = 'none';
+    overlay.style.display = 'none';
+  }
+
+  async function runDetection() {
+    const urlVal = urlInput.value.trim();
+    let imagePayload;
+
+    if (currentBase64) {
+      imagePayload = { type: "base64", value: currentBase64 };
+    } else if (urlVal) {
+      imagePayload = { type: "url", value: urlVal };
+      showPreview(urlVal);
+    } else {
+      alert('Please upload an image or paste a URL first.');
+      return;
+    }
+
+    detectBtn.disabled = true;
+    detectBtn.classList.add('loading');
+    clearResults();
+
+    try {
+      // Call our own backend proxy — no CORS issues
+      const res = await fetch('/api/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imagePayload })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      handleResults(data);
+    } catch(err) {
+      showError(err.message);
+    } finally {
+      detectBtn.disabled = false;
+      detectBtn.classList.remove('loading');
+    }
+  }
+
+  function handleResults(data) {
+    resultsDiv.style.display = 'block';
+
+    const root = Array.isArray(data) ? data[0] : data;
+    const detPreds = root?.detection_predictions
+      ?? root?.outputs?.[0]?.detection_predictions
+      ?? root;
+    const predictions = detPreds?.predictions ?? [];
+
+    if (!predictions.length) {
+      countBadge.textContent = '0 detections';
+      detList.innerHTML = `<div class="empty-state">⚪ No filters detected in this image.</div>`;
+      return;
+    }
+
+    countBadge.textContent = `${predictions.length} detection${predictions.length > 1 ? 's' : ''}`;
+    drawBoxes(predictions, detPreds?.image);
+
+    detList.innerHTML = '';
+    predictions.forEach((p, i) => {
+      const cls        = (p.class ?? 'Unknown').replace(/_/g, ' ');
+      const conf       = p.confidence ?? 0;
+      const isNotAvail = cls.toLowerCase().includes('not');
+      const isAvail    = cls.toLowerCase().includes('available') && !isNotAvail;
+      const colorKey   = isNotAvail ? 'not-available' : isAvail ? 'available' : 'unknown';
+      const icon       = isNotAvail ? '🚫' : isAvail ? '✅' : '🔶';
+      const statusText = isNotAvail ? 'NOT AVAILABLE' : isAvail ? 'AVAILABLE' : 'DETECTED';
+      const w = Math.round(p.width ?? 0), h = Math.round(p.height ?? 0);
+      const cx = Math.round(p.x ?? 0), cy = Math.round(p.y ?? 0);
+
+      const card = document.createElement('div');
+      card.className = `det-card ${colorKey}`;
+      card.style.animationDelay = `${i * 0.07}s`;
+      card.innerHTML = `
+        <div class="det-icon">${icon}</div>
+        <div class="det-body">
+          <div class="det-class ${colorKey}">${cls}</div>
+          <div class="det-meta">
+            <span class="det-conf">${(conf * 100).toFixed(1)}% conf</span>
+            <div class="conf-bar"><div class="conf-fill ${colorKey}" style="width:${conf*100}%"></div></div>
+          </div>
+          <div class="det-dims">Box: ${w}×${h}px · Center: (${cx}, ${cy})</div>
+        </div>
+        <div class="status-pill ${colorKey}">${statusText}</div>
+      `;
+      detList.appendChild(card);
+    });
+  }
+
+  function drawBoxes(predictions, imgMeta) {
+    const img = previewImg;
+    overlay.style.display = 'block';
+
+    const draw = () => {
+      const natW = img.naturalWidth  || imgMeta?.width  || img.width;
+      const natH = img.naturalHeight || imgMeta?.height || img.height;
+      overlay.width = natW; overlay.height = natH;
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0, 0, natW, natH);
+
+      predictions.forEach(p => {
+        const cls    = (p.class ?? '').toLowerCase();
+        const isNot  = cls.includes('not');
+        const isAv   = cls.includes('available') && !isNot;
+        const color  = isNot ? '#ff4e6a' : isAv ? '#3affa0' : '#f5a623';
+        const x = (p.x ?? 0) - (p.width ?? 0) / 2;
+        const y = (p.y ?? 0) - (p.height ?? 0) / 2;
+        const w = p.width ?? 0, h = p.height ?? 0;
+
+        ctx.strokeStyle = color; ctx.lineWidth = Math.max(natW * 0.003, 2);
+        ctx.shadowColor = color; ctx.shadowBlur = 8;
+        ctx.strokeRect(x, y, w, h);
+        ctx.shadowBlur = 0;
+
+        const label = (p.class ?? 'obj').replace(/_/g,' ') + '  ' + ((p.confidence??0)*100).toFixed(0)+'%';
+        const fs = Math.max(natW * 0.016, 13);
+        ctx.font = `bold ${fs}px Syne, sans-serif`;
+        const tw = ctx.measureText(label).width + 14;
+        const th = fs + 8;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y - th, tw, th);
+        ctx.fillStyle = '#07090d';
+        ctx.fillText(label, x + 7, y - 5);
+      });
+    };
+
+    if (img.complete && img.naturalWidth) draw();
+    else img.addEventListener('load', draw, { once: true });
+  }
+
+  function showError(msg) {
+    resultsDiv.style.display = 'block';
+    countBadge.textContent = 'error';
+    detList.innerHTML = `<div class="error-box">⚠ ${msg}</div>`;
+  }
+</script>
+</body>
+</html>
